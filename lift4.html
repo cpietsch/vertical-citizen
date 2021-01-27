@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<style>
+ 
+svg {
+  font: 10px sans-serif;
+}
+
+.axis path,
+.axis line {
+  fill: none;
+  stroke: #000;
+  shape-rendering: crispEdges;
+}
+
+.x.axis path {
+  fill:none;
+  stroke:#000;
+  shape-rendering: crispEdges;
+}
+.axis .domain {
+  display: none;
+}
+
+.line {
+  fill: none;
+  stroke-width: 1px;
+  opacity: 0.6;
+}
+.bars {
+  opacity: 0.8;
+}
+
+.arc {
+  fill: none;
+  stroke: #000;
+}
+/*.group {
+  opacity: 0.07;
+}
+.group.active {
+  opacity: 1;
+}*/
+
+.transform {
+   /*-webkit-perspective: 300;
+  -webkit-transform: rotateY( 20deg );
+  -webkit-perspective-origin:90% 50%;*/
+}
+/*.tick.active {
+  opacity: 1;
+}
+.tick {
+  opacity: 0.2;
+}*/
+
+.label {
+  cursor: pointer;
+}
+ 
+</style>
+<body>
+<script src="js/d3.v3.min.js"></script>
+<script>
+
+
+var margin = {top: 20, right: 300, bottom: 100, left: 300},
+    width = 3000 - margin.left - margin.right,
+    height = 500 - margin.top - margin.bottom;
+
+var parseDate = d3.time.format("%Y-%m-%d %H:%M:%S").parse;
+
+var fill = d3.scale.category20();
+
+var svg = d3.select("body").append("svg")
+    .attr("width", width + margin.left + margin.right)
+    .attr("height", height + margin.top + margin.bottom)
+  .append("g")
+    .classed("container", true)
+    .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+    //.attr("transform", "translate(" + width / 2 + "," + height / 2 + ")");
+
+var y = d3.scale.linear()
+    .range([height, 0]);
+
+var yAxis = d3.svg.axis()
+      .scale(y)
+      .orient("left")
+
+var x = d3.scale.linear()
+    .range([0,width]);
+
+var size = d3.scale.linear()
+    .range([0.5,10])
+    //.domain([1,40])
+    .clamp(true);
+
+var xAxis = d3.svg.axis()
+      .scale(x)
+      .orient("bottom")
+
+var radians = d3.scale.linear()
+        .range([0, 2 * Math.PI / 2]);
+
+
+var arc = d3.svg.arc()
+    .innerRadius(function(d){
+      var e = y(d.key) - y(d.values[0].startPos);
+      d.direction = e>=0 ? 1 : -1;
+      d.dist = Math.abs(e);
+      return d.dist/2;
+    })
+    .outerRadius(function(d){
+      return d.dist/2;
+    })
+    .startAngle(function(d){
+      return 0;
+    })
+    .endAngle(function(d){
+      return d.direction* Math.PI;
+    })
+
+d3.csv("data/all.csv", function(error, data) {
+
+  data.forEach(function(d){
+    d.startTime = parseDate(d.startTime);
+    d.endTime = parseDate(d.endTime);
+    d.startPos = +d.startPos;
+    d.endPos = +d.endPos;
+    d.load = +d.load;
+  });
+
+  console.log(data)
+
+  // data = data.filter(function(d){
+  //   return d.startTime > new Date("4 3, 2014 04:00:00")
+  //    // && d.name == "DeRotterda.West.LW.LW01";
+  // })
+
+  console.log(data, data[0]);
+
+  var nested = d3.nest()
+    .key(function(d) { return d.name; })
+    .key(function(d) { return d.startPos; }).sortKeys(function(a,b) { return a-b; })
+    .key(function(d) { return d.endPos; }).sortKeys(function(a,b) { return a-b; })
+    .entries(data);
+
+  // nested = nested.filter(function(d){
+  //   return d.key.indexOf("West.LW") > -1;
+  // })
+
+  console.log("nested", nested)
+
+  var extent = d3.extent(data, function(d) { return d.endPos; });
+  console.log(extent)
+
+  y.domain([0,extent[1]]).clamp(true)
+  //y.domain(extent)
+  //yAxis.ticks(40)
+
+  var subData = nested[0].values;
+  console.log("subData", subData)
+
+  size.domain([
+    0,
+    d3.max(nested, function(d){
+      return d3.max(d.values, function(e){ return e.values.length });
+    })
+  ])
+  //x.domain([0, d3.max(subData, function(d){ console.log(d); return d.values.length; })]);
+  //console.log(x.domain())
+
+  var lifts = svg.selectAll(".lifts")
+    .data(nested)
+    .enter()
+      .append("g")
+      .attr("class", "lifts")
+      .attr("transform", function(d,i) {
+        return "translate(" + (i)* (width / (nested.length-1)) + ",0)";
+      })
+
+  // lifts.append("g")
+  //     .attr("class", "axis")
+      // .each(function(d){
+      //   d3.select(this).call(
+      //     d3.svg.axis()
+      //       .scale(y)
+      //       .orient("left")
+      //       .tickValues(d.values.map(function(d){ return d.key; }))
+      //     )
+      // })
+
+
+  lifts.append("g")
+    .attr("transform", function(d,i) {
+        return "translate(" + 0 + "," + (height +10) + ")";
+      })
+    .append("text")
+    .attr("class", "label")
+    .attr("y", 0)
+    .attr("x", 0)
+    .attr("dy", ".35em")
+    .attr("transform", "rotate(90)")
+    .style("text-anchor", "start")
+    .text(function(d){
+      return d.key.replace("DeRotterda.","");
+    })
+    .on("mouseover", function(d){
+      d3.selectAll(".lifts").style("opacity", function(e){
+        return d.key == e.key ? 1 : 0;
+      });
+    })
+    .on("mouseout", function(d){
+      //console.log(d)
+      d3.selectAll(".lifts").style("opacity", 1);
+    })
+
+  var etage = lifts.selectAll(".group")
+        .data(function(d){ return d.values; })
+      .enter().append("g")
+        .attr("class", function(d) { 
+          return "group g"+d.key;
+        })
+        .attr("transform", function(d) {
+          return "translate(" + 0 + "," + y(d.key) + ")";
+        })
+
+    etage.selectAll(".arc")
+          .data(function(d){ return d.values })
+          .enter()
+          .append("path")
+          .attr("class", "arc")
+          .attr("key", function(d) { return d.key; })
+          .attr("d", arc)
+          .attr("transform", function(d) {
+            return "translate("+ (d.direction>0 ? 10 : -10) +"," + d.dist*d.direction/2 + ")";
+          })
+          .attr("stroke-width", function(d){
+            return size(d.values.length);
+          })
+
+      etage.append("text")
+        .attr("y", 0)
+        .attr("x", 0)
+        .attr("dy", ".35em")
+        .style("text-anchor", "middle")
+        .text(function(d){
+          return d.key;
+        })
+
+    
+  var rect = svg.append("rect")
+      .attr("width", width)
+      .attr("height", height)
+      .attr("fill", "none")
+      .attr("pointer-events", "all")
+      .attr("cursor", "pointer")
+      .on("mousemove", mousemove)
+      .on("mouseout", mouseout);
+
+  var groups = d3.selectAll(".group");
+
+  function mousemove(d, i) {
+    var m = d3.mouse(this);
+    var etage = Math.round( y.invert(m[1]) );
+    //console.log(etage);
+    //console.time("move");
+    groups.style("opacity", function(d){
+      return etage == d.key ? 0.8 : 0.05;
+    });
+    //console.timeEnd("move");
+    d3.selectAll(".axis .tick").style("opacity", function(d){
+      return etage == d ? 1 : 0.2;
+    });
+
+    // var selected = d3.selectAll(".lifts").selectAll(".group").filter(function(d){
+    //   return etage == d.key;
+    // }).each(function(d){
+    //   console.log(d)
+    // });
+    //console.log(selected)
+
+    // d3.selectAll(".lifts").each(function(d){
+    //   var selected = d3.select(this).selectAll(".group").filter(function(d){
+    //     return etage == d.key;
+    //   }).data()[0];
+    //   if(selected){
+    //     d3.select(this).select(".up").text(function(d){
+    //       return d3.sum(selected.values.filter(
+    //           function(d){ return d.direction == -1; })
+    //           ,function(d){ return d.values.length; });
+    //     })
+    //     d3.select(this).select(".down").text(function(d){
+    //       return d3.sum(selected.values.filter(
+    //           function(d){ return d.direction == -1; })
+    //           ,function(d){ return d.values.length; });
+    //     })
+    //     //console.log(d.key, selected )
+    //   }
+    // })
+  }
+
+  function mouseout(){
+    console.log("out");
+    d3.selectAll(".group").style("opacity", 0.7);
+    //d3.selectAll(".axis .tick").style("opacity", 0.8);
+  }
+
+
+});
+
+
+</script>

@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<style>
+ 
+svg {
+  font: 10px sans-serif;
+}
+
+.axis path,
+.axis line {
+  fill: none;
+  stroke: #000;
+  shape-rendering: crispEdges;
+}
+
+.x.axis path {
+  fill:none;
+  stroke:#000;
+  shape-rendering: crispEdges;
+}
+
+.axis .tick {
+  stroke-width: .5px;
+  stroke-opacity: .1;
+}
+.axis .domain {
+
+  stroke-opacity: .5;
+}
+.bar {
+  stroke-width: 1px;
+  fill:none;
+}
+.line {
+  fill: none;
+  stroke-width: 1px;
+  opacity: 0.6;
+}
+.bars {
+  opacity: 0.8;
+}
+rect.pane {
+  cursor: move;
+  fill: none;
+  pointer-events: all;
+}
+
+#select div {
+  float: left;
+  color: #FFF !important;
+  padding: 12px;
+  margin: 3px;
+  background-color: #53bf6b;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07rem;
+  float: right;
+}
+
+body {
+  font-family: sans-serif;
+    font-size: 18pt;
+    font-weight: 300;
+    color: #3a3939;
+  padding-left: 20px;
+
+}
+h1 {
+  float: left;
+  margin-top:0;
+}
+
+
+ 
+</style>
+<body>
+<h1>Vertical Citizens</h1>
+<div id="select">
+  <div id="level">vertical movement</div>
+  <div id="load">cabine load in %</div>
+</div>
+<script src="js/d3.v3.min.js"></script>
+<script>
+
+var data;
+
+var margin = {top: 20, right: 150, bottom: 30, left: 30},
+    width = window.innerWidth - margin.left - margin.right,
+    height = 500 - margin.top - margin.bottom
+    innerRadius = Math.min(width, height) * .41,
+    outerRadius = innerRadius * 1.1;
+
+var parseDate = d3.time.format("%Y-%m-%d %H:%M:%S").parse;
+
+var x = d3.time.scale()
+    .range([0, width]);
+
+var y = d3.scale.linear()
+    .range([height, 0]);
+
+var size = d3.scale.linear()
+    .range([0, 1]);
+
+var load = d3.scale.linear()
+       .range([height, 0]);
+
+var color = d3.scale.category10();
+
+var chord = d3.layout.chord()
+    .padding(.05)
+    .sortSubgroups(d3.descending)
+
+var xAxis = d3.svg.axis()
+    .scale(x)
+    .orient("bottom")
+    .tickSize(-height, 0)
+    .tickPadding(6);
+
+var yAxis = d3.svg.axis()
+    .scale(y)
+    .ticks(24)
+    .tickSize(-width)
+    .tickPadding(6)
+    .orient("left");
+
+var line = d3.svg.line()
+    .interpolate("linear")
+    .x(function(d) { return x(d.startTime); })
+    .y(function(d) { return load(d.load); });
+
+var svg = d3.select("body").append("svg")
+    .attr("width", width + margin.left + margin.right)
+    .attr("height", height + margin.top + margin.bottom)
+  .append("g")
+    .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+var svg2 = d3.select("body").append("svg")
+    .attr("width", width)
+    .attr("height", height)
+  .append("g")
+    .attr("transform", "translate(" + width / 2 + "," + height / 2 + ")");
+
+var makeLevel = function(d){
+  return "M"+ x(d.startTime) + " " + y(d.startPos) + " " +
+          "L" + x(d.endTime) + " " + y(d.endPos) + " Z";
+}
+
+
+var makeLoad = function(d){
+  return "M"+ x(d.startTime) + " " + height + " " +
+         "L" + x(d.startTime) + " " + load(d.load) + " Z";
+}
+
+var zoom = d3.behavior.zoom()
+    .on("zoom", draw);
+
+function draw() {
+  svg.select("g.x.axis").call(xAxis);
+  svg.select("g.y.axis").call(yAxis);
+  if(state == 'level'){
+    svg.selectAll('.bar')
+      .attr("d", function(d){ return makeLevel(d); })
+  } else {
+    svg.selectAll('.bar')
+      .attr("d", function(d){ return makeLoad(d); })
+  }
+  
+}
+
+svg.append("clipPath")
+    .attr("id", "clip")
+  .append("rect")
+    .attr("x", x(0))
+    .attr("y", y(1))
+    .attr("width", x(1) - x(0))
+    .attr("height", y(0) - y(1));
+
+var state = 'level';
+
+d3.csv("data/18nov.csv", function(error, loaded) {
+
+  data = loaded.map( function (d) { 
+      return { 
+        name: d.name,
+        startTime: parseDate(d.startTime),
+        endTime: parseDate(d.endTime),
+        startPos: (+d.startPos),
+        endPos: (+d.endPos),
+        load: +d.load
+      }; 
+  });
+
+  data = data.filter(function(d){
+    return (d.endTime-d.startTime) < (200 * 1000);
+  });
+
+  console.log(data[0])
+
+
+  // data = data.filter(function(d){
+  //   //return d.startTime > new Date("4 3, 2014 04:00:00")
+  //   return d.name == "DeRotterda.East.LHO.LHO01";
+  // })
+
+
+  var ticks = svg2.append("g").selectAll("g")
+    .data(chord.groups)
+  .enter().append("g")
+    .attr("transform", function(d) {
+     console.log(d);
+
+      return "rotate(" + (d.startAngle * 180 / Math.PI - 90) + ")"
+          + "translate(" + outerRadius + ",0)";
+    });
+
+  ticks.append("line")
+    .attr("x1", 1)
+    .attr("y1", 0)
+    .attr("x2", 5)
+    .attr("y2", 0)
+    .style("stroke", "#000");
+
+  ticks.append("text")
+    .attr("x", 8)
+    .attr("dy", ".35em")
+    .attr("transform", function(d) { return d.angle > Math.PI ? "rotate(180)translate(-16)" : null; })
+    .style("text-anchor", function(d) { return d.angle > Math.PI ? "end" : null; })
+    .text(function(d) { return d.index; });
+
+  // Returns an event handler for fading a given chord group.
+  function fade(opacity) {
+   return function(g, i) {
+     svg2.selectAll(".chord path")
+         .filter(function(d) { return d.source.index != i && d.target.index != i; })
+       .transition()
+         .style("opacity", opacity);
+   };
+  }
+
+ // x.domain(d3.extent(data, function(d) { return d.date; }));
+  y.domain(d3.extent(data, function(d) { return d.endPos; }));
+  size.domain(d3.extent(data, function(d) { return d.load; }));
+  load.domain(d3.extent(data, function(d) { return d.load; }));
+
+
+
+  data = d3.nest()
+    .key(function(d) { return d.name.split(".")[2]; })
+  // .key(function(d) { return d.name.split(".")[3] })
+    .entries(data);
+
+  console.log(data)
+
+  elevatorNames = data.map(function(d){ return d.key; })
+  console.log(elevatorNames)
+  color.domain(elevatorNames);
+
+  x.domain([
+    d3.min(data, function(d) { return d3.min(d.values, function (d) { return d.startTime; }); }),
+    //new Date("4 3, 2014 07:15:00"),
+    d3.max(data, function(d) { return d3.max(d.values, function (d) { return d.endTime; }); })
+  ]);
+  zoom.x(x);
+  
+
+  console.log(x.domain())
+
+                                                                                   
+  svg.append("g")
+      .attr("class", "x axis")
+      .attr("transform", "translate(0," + height + ")")
+      .call(xAxis);
+
+  svg.append("g")
+      .attr("class", "y axis")
+      .call(yAxis);
+
+  var circles = svg.selectAll(".bars")
+      .data(data, function(d) { return d.key; })
+    .enter().append("g")
+    .attr("clip-path", "url(#clip)")
+      .attr("class", "bars");
+
+    // circles.append("path")
+    //   .attr("class", "line")
+    //   .attr("d", function(d) { console.log(d); return line(d.values); })
+    //   .style("stroke", function(d) { return color(d.key); });
+
+console.log(circles)
+  circles
+    .each(function (d) {
+      d3.select(this).selectAll("path")
+        .data(d.values)
+        .enter()
+          .append("path")
+          .classed("bar", true)
+          .attr("d", function (d) { return makeLevel(d); })
+          .style("stroke", function(d) { return color(d.name); })
+  })
+
+  d3.select('#load').on('click',function(d){
+    state = 'load';
+    yAxis = yAxis.scale(load);
+    svg.select(".y.axis").transition().duration(2000).call(yAxis);
+
+    svg.selectAll('.bar')
+      .transition().duration(2000)
+      .attr("d", function(d){ return makeLoad(d); })
+  })
+  d3.select('#level').on('click',function(d){
+    state = 'level';
+    yAxis = yAxis.scale(y);
+    svg.select(".y.axis").transition().duration(2000).call(yAxis);
+    svg.selectAll('.bar')
+      .transition().duration(2000)
+      .attr("d", function(d){ return makeLevel(d); })
+  })
+
+  //console.log(d)
+  var legend = svg.append("g")
+    .attr("class", "legend")
+    .attr("transform", "translate(" + (width + 20) + "," + 10 + ")");
+
+
+  var l = legend.selectAll("g")
+    .data(elevatorNames)
+    .enter()
+    .append("g")
+    .style("cursor", "pointer")
+    .on('click',function(d){
+
+      circles.filter(function(c){ return c.key != d; }).style("visibility", "hidden");
+      circles.filter(function(c){ return c.key == d; }).style("visibility", "visible");
+    })
+
+
+  l.append("rect")
+    .attr("x", 0)
+    .attr("y", function(d,i){ return 12*i; })
+    .attr("width", 10)
+    .attr("height", 10)
+    .style("fill", function(d) { return "#000" })
+
+  l.append("text")
+    .attr("x", 15)
+    .attr("y", function(d,i){ return 9+12*i; })
+    .text(function(d) { return d; });
+    
+  svg.append("rect")
+      .attr("class", "pane")
+      .attr("width", width)
+      .attr("height", height)
+      .call(zoom);
+
+  // var lines = svg.selectAll(".lines")
+  //     .data(data, function(d) { return d.key; })
+  //   .enter().append("g")
+  //     .attr("class", "etage");
+
+  // lines.append("path")
+  //     .attr("class", "line")
+  //     .attr("d", function(d) { console.log(d); return line(d.values); })
+  //     .style("stroke", function(d) { return color(d.key); });
+
+});
+
+
+</script>

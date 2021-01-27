@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<style>
+ 
+ body {
+  padding: 0;
+  margin: 0;
+  background: #000;
+ }
+ svg {
+  position: absolute;
+  z-index: 100;
+  font-family: 'Oswald', sans-serif;
+  font-size: 40px;
+ }
+ svg text {
+  fill:#FFF;
+ }
+ video {
+  position: absolute;
+ }
+
+ #time {
+  left: 20px;
+  position: absolute;
+  z-index: 100;
+  color: #FFF;
+  font-family: Helvetica;
+  font-size: 20px;
+  /* margin: auto 0; */
+  top: 20px;
+ }
+
+</style>
+<link href='http://fonts.googleapis.com/css?family=Oswald:400,300,700' rel='stylesheet' type='text/css'>
+<body>
+
+<svg></svg>
+<span id="time"></span>
+<videos width="1280" height="720" autoplay controls id="videos">
+  <source src="data/timelapse.mp4#t=1" type="video/mp4">
+</videos>
+
+<iframe id="video" src="//player.vimeo.com/video/120360055?autoplay=1&title=0&byline=0&portrait=0&loop=1" width="1280" height="720" frameborder="0" webkitallowfullscreen mozallowfullscreen allowfullscreen></iframe>
+
+<script src="js/d3.v3.min.js"></script>
+<script>
+
+                                                                   
+var data;
+var split = [];
+var video = d3.select("#video");
+
+video.on('loadedmetadata', function() {
+  //this.currentTime = 10;
+  console.log("video loaded", this);
+}, false);
+
+var date = d3.time.format("%Y-%m-%d %H:%M:%S");
+var dataDate,todayDate,lastTime;
+var elevators;
+var title = "VERTICALCITIZEN";
+
+var today = new Date();  
+var todayDate = +new Date(today.getFullYear(), today.getMonth(), today.getDate());
+var nowTime = new Date()-todayDate;
+
+var y = d3.scale.linear().domain([-2,44]).range([555,0])
+var width = 420;
+var svg = d3.select("svg")
+      .attr("width", 1280)
+      .attr("height", 720)
+    .append("g")
+      .attr("transform", "translate(" + 400 + "," + 100 + ")");
+
+
+d3.csv("data/18nov.csv", function(error, loaded) {
+
+  data = loaded.filter(function(d){
+    return d.endTime!=0 && d.startTime!=0;
+  })
+
+  data = data.map( function (d) { 
+      // if(d.endTime==0 || d.startTime == 0){
+      //   console.log(d)
+      // }
+      return { 
+        name: d.name,
+        startTime: date.parse(d.startTime),
+        endTime: date.parse(d.endTime),
+        startPos: (+d.startPos),
+        endPos: (+d.endPos),
+        load: +d.load,
+        up: d.startPos-d.endPos < 0
+      }; 
+  });
+
+  data.sort(function(a,b){
+    return a.startTime - b.startTime;
+  });
+
+  dataDate = +new Date(
+    data[0].startTime.getFullYear(),
+    data[0].startTime.getMonth(),
+    data[0].startTime.getDate()
+  );
+
+  data.forEach(function(d){
+    d.timestamp = d.startTime-dataDate;
+    d.duration = d.endTime-dataDate-d.timestamp;
+
+    split.push({
+      name: d.name,
+      time: d.startTime,
+      pos: d.startPos,
+      load: d.load,
+      type: "start",
+      up: d.up,
+      timestamp: d.startTime-dataDate
+    })
+    split.push({
+      name: d.name,
+      time: d.endTime,
+      pos: d.endPos,
+      load: d.load,
+      type: "end",
+      up: d.up,
+      timestamp: d.endTime-dataDate
+    })
+  });
+
+  //console.log(dataDate);
+  console.log("loaded",data,split)
+
+
+  elevators = d3.nest()
+      .key(function(d) { return d.name; })
+      //.sortKeys(d3.ascending)
+      //.rollup(function(leaves) { return Math.floor(Math.random() * 44); })
+      .entries(data)
+      .slice(0,title.length)
+      //.map(split);
+
+
+  console.log(elevators)
+
+
+  svg.selectAll("text").data(elevators, function(d){ return d.key; })
+    .enter()
+    .append("text")
+    .attr("x", function(d,i){ return width/title.length * i; })
+    .attr("y", function(d,i){ return y(getLastPosForTime(d.values,nowTime)); })
+    .text(function(d,i){ return title.charAt(i); })  
+
+});
+
+function getLastPosForTime(drives,time){
+
+  var last = drives.filter(function(d){
+    return d.timestamp < time;
+  }).pop();
+
+  return last.endPos;
+}
+
+function update(){
+
+  nowTime = new Date()-todayDate;
+
+  d3.select("#time").text(date(new Date(dataDate+nowTime)));
+
+  var drives = data.filter(function(d){
+      return d.timestamp > lastTime && d.timestamp <= nowTime;
+  })
+
+  drives.map(function(d){
+    d.key = d.name;
+    return d;
+  })
+
+  console.log(drives);
+
+  svg.selectAll("text")
+    .data(drives, function(d){ return d.key; })
+    .transition()
+    .duration(function(d){ return d.duration; })
+    //.ease("circle-in-out")
+    .attr("y", function(d,i){ return y(d.endPos); })
+  
+  lastTime = nowTime;
+}
+
+setInterval(update,1000);
+
+
+//d3.timer(update)
+
+</script>

@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<style>
+ 
+svg {
+  font: 10px sans-serif;
+}
+
+.axis path,
+.axis line {
+  fill: none;
+  stroke: #000;
+  shape-rendering: crispEdges;
+}
+
+.x.axis path {
+  fill:none;
+  stroke:#000;
+  shape-rendering: crispEdges;
+}
+
+.axis .tick {
+  stroke-width: .5px;
+  stroke-opacity: .1;
+}
+.axis .domain {
+  stroke:none;
+}
+.bar {
+  fill:none;
+  stroke:#000;
+}
+.line {
+  fill: none;
+  stroke-width: 1px;
+  opacity: 0.6;
+}
+.bars {
+  opacity: 0.8;
+}
+rect.pane {
+  cursor: move;
+  fill: none;
+  pointer-events: all;
+}
+
+#select div {
+  float: left;
+  color: #FFF !important;
+  padding: 12px;
+  margin: 3px;
+  background-color: #53bf6b;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07rem;
+  float: right;
+}
+
+body {
+  font-family: sans-serif;
+    font-size: 18pt;
+    font-weight: 300;
+    color: #3a3939;
+  padding-left: 20px;
+
+}
+h1 {
+  float: left;
+  margin-top:0;
+}
+
+
+ 
+</style>
+<body>
+<select class="elevatorSelect"></select>
+<p>
+levels traveled: ⬆<span class="upLevels"></span> ⬇<span class="downLevels"></span> , load: ⬆<span class="upLoad"></span> ⬇<span class="downLoad"></span>
+</p>
+<script src="js/d3.v3.min.js"></script>
+<script>
+
+var data;
+
+var margin = {top: 20, right: 150, bottom: 30, left: 30},
+    height = 300 - margin.top - margin.bottom
+    width = window.innerWidth - margin.left - margin.right,
+    innerRadius = Math.min(width, height) * .41,
+    outerRadius = innerRadius * 1.1;
+
+var parseDate = d3.time.format("%Y-%m-%d %H:%M:%S").parse;
+
+var x = d3.time.scale()
+    .range([0, width]);
+
+var y = d3.scale.linear()
+    .range([height, 0]);
+
+var size = d3.scale.linear()
+    .range([0, 1]);
+
+var load = d3.scale.linear()
+       .range([1, 10]);
+
+var color = d3.scale.category10();
+
+var chord = d3.layout.chord()
+    .padding(.05)
+    .sortSubgroups(d3.descending)
+
+var xAxis = d3.svg.axis()
+    .scale(x)
+    .orient("bottom")
+    .tickSize(-height, 0)
+    .tickPadding(6);
+
+var yAxis = d3.svg.axis()
+    .scale(y)
+    .ticks(24)
+    .tickSize(-width)
+    .tickPadding(6)
+    .orient("left");
+
+var line = d3.svg.line()
+    .interpolate("linear")
+    .x(function(d) { return x(d.startTime); })
+    .y(function(d) { return load(d.load); });
+
+var svg = d3.select("body").append("svg")
+    .attr("width", width + margin.left + margin.right)
+    .attr("height", height + margin.top + margin.bottom)
+  .append("g")
+    .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+var svg2 = d3.select("body").append("svg")
+    .attr("width", width)
+    .attr("height", height)
+  .append("g")
+    .attr("transform", "translate(" + width / 2 + "," + height / 2 + ")");
+
+var makeLevel = function(d){
+  return "M"+ x(d.startTime) + " " + y(d.startPos) + " " +
+          "L" + x(d.endTime) + " " + y(d.endPos) + " Z";
+}
+
+
+var makeLoad = function(d){
+  return "M"+ x(d.startTime) + " " + height + " " +
+         "L" + x(d.startTime) + " " + load(d.load) + " Z";
+}
+
+var zoom = d3.behavior.zoom()
+    .on("zoom", draw);
+
+
+svg.append("clipPath")
+    .attr("id", "clip")
+  .append("rect")
+    .attr("x", x(0))
+    .attr("y", y(1))
+    .attr("width", x(1) - x(0))
+    .attr("height", y(0) - y(1));
+
+svg.append("g")
+    .attr("class", "x axis")
+    .attr("transform", "translate(0," + height + ")")
+    .call(xAxis);
+
+svg.append("g")
+    .attr("class", "y axis")
+    .call(yAxis);
+
+var chart = svg.append("g")
+  .attr("clip-path", "url(#clip)")
+  .attr("class", "bars")
+
+svg.append("rect")
+    .attr("class", "pane")
+    .attr("width", width)
+    .attr("height", height)
+    .call(zoom);
+
+
+function draw() {
+  svg.select("g.x.axis").call(xAxis);
+  svg.select("g.y.axis").call(yAxis);
+  svg.selectAll('.bar')
+      .attr("d", function(d){ return makeLevel(d); })
+      .attr("stroke-width", function(d){ return load(d.load); })
+  
+}
+
+function loadChart(data){
+
+    y.domain([
+      d3.min(data, function(d) { return d.startPos; }),
+      d3.max(data, function(d) { return d.endPos; })
+    ]);
+    load.domain(d3.extent(data, function(d) { return d.load; }));
+
+
+    x.domain([
+      d3.min(data, function(d) { return d.startTime; }),
+      d3.max(data, function(d) { return d.endTime; })
+    ]);
+    zoom.x(x);
+
+    console.log(y.domain(), x.domain())
+
+    var levels = chart.selectAll("path")
+        .data(data)
+
+    levels
+      .enter()
+        .append("path")
+        .classed("bar", true)
+
+    levels
+      .exit()
+        .remove()
+
+    draw();
+
+    var stats = {
+      up:{ levels: 0, load:0 },
+      down:{ levels: 0, load:0 }
+    }
+
+    data.forEach(function(d){
+      if(d.startPos < d.endPos){
+        stats.up.levels += d.endPos-d.startPos;
+        stats.up.load += d.load;
+      } else {
+        stats.down.levels += d.startPos-d.endPos;
+        stats.down.load += d.load;
+      }
+    })
+
+    d3.select(".upLevels").text(stats.up.levels)
+    d3.select(".upLoad").text(stats.up.load)
+    d3.select(".downLevels").text(stats.down.levels)
+    d3.select(".downLoad").text(stats.down.load)
+
+    console.log(stats);
+
+
+  }
+
+d3.csv("data/18nov.csv", function(error, loaded) {
+
+  data = loaded.map( function (d) { 
+      return { 
+        name: d.name,
+        startTime: parseDate(d.startTime),
+        endTime: parseDate(d.endTime),
+        startPos: (+d.startPos),
+        endPos: (+d.endPos),
+        load: +d.load
+      }; 
+  });
+
+  var elevators = d3.nest()
+      .key(function(d) { return d.name; })
+      .entries(data)
+
+  console.log(elevators);
+
+  d3.select(".elevatorSelect")
+    .on("change", function(d){
+      loadChart(elevators[d3.select(this).property('selectedIndex')].values)
+    })
+    .selectAll("option").data(elevators)
+    .enter()
+    .append("option")
+    .text(function(d){ return d.key; })
+    
+
+  loadChart(elevators[0].values);
+
+                                                                                   
+
+
+});
+
+
+</script>

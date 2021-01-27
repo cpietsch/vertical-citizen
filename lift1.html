@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<style>
+ 
+svg {
+  font: 10px sans-serif;
+}
+
+.axis path,
+.axis line {
+  fill: none;
+  stroke: #000;
+  shape-rendering: crispEdges;
+}
+
+.x.axis path {
+  fill:none;
+  stroke:#000;
+  shape-rendering: crispEdges;
+}
+.axis .domain {
+  display: none;
+}
+
+.line {
+  fill: none;
+  stroke-width: 1px;
+  opacity: 0.6;
+}
+.bars {
+  opacity: 0.8;
+}
+
+.arc {
+  fill: none;
+  stroke: #000;
+}
+.group {
+  opacity: 0.5;
+}
+.group.active {
+  opacity: 1;
+}
+ 
+</style>
+<body>
+<script src="js/d3.v3.min.js"></script>
+<script>
+
+
+var margin = {top: 20, right: 300, bottom: 100, left: 30},
+    width = window.innerWidth - margin.left - margin.right,
+    height = window.innerHeight - margin.top - margin.bottom;
+
+var parseDate = d3.time.format("%Y-%m-%d %H:%M:%S").parse;
+
+var fill = d3.scale.category20();
+
+var svg = d3.select("body").append("svg")
+    .attr("width", width + margin.left + margin.right)
+    .attr("height", height + margin.top + margin.bottom)
+  .append("g")
+    .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+    //.attr("transform", "translate(" + width / 2 + "," + height / 2 + ")");
+
+var y = d3.scale.linear()
+    .range([height, 0]);
+
+var yAxis = d3.svg.axis()
+      .scale(y)
+      .orient("left")
+
+var x = d3.scale.linear()
+    .range([0,width]);
+
+var xAxis = d3.svg.axis()
+      .scale(x)
+      .orient("bottom")
+
+var radians = d3.scale.linear()
+        .range([0, 2 * Math.PI / 2]);
+
+// path generator for arcs (uses polar coordinates)
+var arc = d3.svg.line.radial()
+    .interpolate("basis")
+    .tension(0)
+    .angle(function(d) { return radians(d); });
+
+d3.csv("data/all.csv", function(error, data) {
+
+  data.forEach(function(d){
+    d.startTime = parseDate(d.startTime);
+    d.endTime = parseDate(d.endTime);
+    d.startPos = +d.startPos;
+    d.endPos = +d.endPos;
+    d.load = +d.load;
+  });
+
+  // data = data.filter(function(d){
+  //   return d.startTime > new Date("4 3, 2014 04:00:00")
+  //    // && d.name == "DeRotterda.West.LW.LW01";
+  // })
+
+  console.log(data, data[0]);
+
+  var nested = d3.nest()
+    .key(function(d) { return d.name; })
+    .key(function(d) { return d.startPos; }).sortKeys(function(a,b) { return a-b; })
+    .key(function(d) { return d.endPos; }).sortKeys(function(a,b) { return a-b; })
+    .entries(data);
+
+  console.log("nested", nested)
+
+  var extent = d3.extent(data, function(d) { return d.endPos; });
+  console.log(extent)
+
+  y.domain(extent)
+  yAxis.ticks(40)
+
+  var subData = nested[0].values;
+  console.log("subData", subData)
+
+  //x.domain([0, d3.max(subData, function(d){ console.log(d); return d.values.length; })]);
+  //console.log(x.domain())
+
+  var lifts = svg.selectAll(".lifts")
+    .data(nested)
+    .enter()
+      .append("g")
+      .attr("class", "lifts")
+      .attr("transform", function(d,i) {
+        return "translate(" + i* (width / nested.length) + ",0)";
+      })
+
+  lifts.append("g")
+      .attr("class", "axis")
+      .call(yAxis)
+
+  lifts.append("g")
+    .attr("transform", function(d,i) {
+        return "translate(" + -10 + "," + (height +10) + ")";
+      })
+    .append("text")
+    .attr("y", 0)
+    .attr("x", 2)
+    .attr("dy", ".35em")
+    .attr("transform", "rotate(45)")
+    .style("text-anchor", "start")
+    .text(function(d){
+      return d.key.replace("DeRotterda.","");
+    })
+
+  lifts.selectAll(".group")
+        .data(function(d){ return d.values; })
+      .enter().append("g")
+        .attr("class", function(d) { 
+          return "group g"+d.key;
+        })
+        .attr("transform", function(d) {
+          return "translate(" + 0 + "," + y(d.key) + ")";
+        })
+        .on("mouseover", function(d){
+          // d3.selectAll(".group").classed("active", function(e){
+          //   return e.key == d.key;
+          // });
+        })
+        .selectAll(".arc")
+          .data(function(d){ return d.values })
+          .enter()
+          .append("path")
+          .attr("class", "arc")
+          .attr("key", function(d) { return d.key; })
+          .attr("transform", function(d) {
+            return "translate(0," + (y(d.key)-y(d.values[0].startPos))/2 + ")";
+          })
+          .attr("d", function(d, i) {
+              //console.log(d)
+              // get x distance between source and target
+              var dist = Math.abs(y(d.key) - y(d.values[0].startPos));
+              // // set arc radius based on x distance
+              arc.radius(dist / 2);
+
+              // // want to generate 1/3 as many points per pixel in x direction
+              var points = d3.range(0, Math.ceil(dist / 5));
+
+              // // set radian scale domain
+              radians.domain([0, points.length - 1]);
+
+              // // return path for arc
+              return arc(points);
+          })
+          .attr("stroke-width", function(d){
+            return d.values.length/10;
+          })
+          // .attr("width", function(d) { return x(d.values.length); })
+          // .attr("x", function(d) { return x(0); })
+          // .attr("height", 5);
+  // matrix = nested.map(function(d){
+  //   var m = matrix: d3.range(maxPos).map(function(d){
+  //     return d3.range(maxPos).map(function(d){ return 0; });
+  //   });
+  //   d.values.forEach(function(d){
+  //     m[d.startPos][d.endPos]++;
+  //   })
+  //   return {
+  //     key: d.key,
+      
+  //   }
+  // })
+
+  // matrix = d3.range(maxPos).map(function(d){
+  //   return d3.range(maxPos).map(function(d){ return 0; });
+  // })
+
+  // data.forEach(function(d){
+  //   matrix[d.startPos][d.endPos]++;
+  // })
+
+  // console.log(matrix);
+
+  // chord.matrix(matrix);
+
+ //  svg.append("g").selectAll("path")
+ //      .data(chord.groups)
+ //    .enter().append("path")
+ //      .style("fill", function(d) { return fill(d.index); })
+ //      .style("stroke", function(d) { return fill(d.index); })
+ //      .attr("d", d3.svg.arc().innerRadius(innerRadius).outerRadius(outerRadius))
+ //      .on("mouseover", fade(.1))
+ //      .on("mouseout", fade(1));
+
+ //  svg.append("g")
+ //      .attr("class", "chord")
+ //    .selectAll("path")
+ //      .data(chord.chords)
+ //    .enter().append("path")
+ //      .attr("d", d3.svg.chord().radius(innerRadius))
+ //      .style("fill", function(d) { return fill(d.target.index); })
+ //      .style("opacity", 1);
+
+
+ // var ticks = svg.append("g").selectAll("g")
+ //     .data(chord.groups)
+ //   .enter().append("g")
+ //     .attr("transform", function(d) {
+ //      console.log(d);
+
+ //       return "rotate(" + (d.startAngle * 180 / Math.PI - 90) + ")"
+ //           + "translate(" + outerRadius + ",0)";
+ //     });
+
+ // ticks.append("line")
+ //     .attr("x1", 1)
+ //     .attr("y1", 0)
+ //     .attr("x2", 5)
+ //     .attr("y2", 0)
+ //     .style("stroke", "#000");
+
+ // ticks.append("text")
+ //     .attr("x", 8)
+ //     .attr("dy", ".35em")
+ //     .attr("transform", function(d) { return d.angle > Math.PI ? "rotate(180)translate(-16)" : null; })
+ //     .style("text-anchor", function(d) { return d.angle > Math.PI ? "end" : null; })
+ //     .text(function(d) { return d.index; });
+
+ //  // Returns an event handler for fading a given chord group.
+ //  function fade(opacity) {
+ //    return function(g, i) {
+ //      svg.selectAll(".chord path")
+ //          .filter(function(d) { return d.source.index != i && d.target.index != i; })
+ //        .transition()
+ //          .style("opacity", opacity);
+ //    };
+ //  }
+
+});
+
+
+</script>

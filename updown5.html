@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<style>
+ 
+svg {
+  font: 10px sans-serif;
+}
+.axis .domain {
+  stroke:none;
+}
+.axis path,
+.axis line {
+  shape-rendering: crispEdges;
+  stroke:#000;
+  fill:none;
+}
+
+.axis .tick {
+  stroke-width: .5px;
+  stroke-opacity: .1;
+}
+
+.bar {
+  fill:none;
+}
+.waiting {
+  opacity: 0.4;
+}
+.line {
+  fill: none;
+  stroke-width: 1px;
+  opacity: 0.6;
+}
+.bars {
+  opacity: 0.8;
+}
+rect.pane {
+  cursor: move;
+  fill: none;
+  pointer-events: all;
+}
+
+.drives {
+  fill: red;
+  stroke:none;
+}
+
+.brush .extent {
+  stroke: #000;
+  fill-opacity: .125;
+  shape-rendering: crispEdges;
+}
+
+
+
+ 
+</style>
+<body>
+<script src="js/d3.v3.min.js"></script>
+<script>
+
+var data;
+
+var margin = {top: 20, right: 50, bottom: 30, left: 50},
+    height = 2500 - margin.top - margin.bottom
+    width = 1000 - margin.left - margin.right,
+    innerRadius = Math.min(width, height) * .41,
+    outerRadius = innerRadius * 1.1,
+    chartHeight = 100,
+    chartHeightBorder = 2;
+
+var parseDate = d3.time.format("%Y-%m-%d %H:%M:%S").parse;
+
+var x = d3.time.scale()
+    .range([0, width]);
+
+var y = d3.scale.linear()
+    .range([chartHeight, 0]);
+
+var size = d3.scale.linear()
+    .range([0, 1]);
+
+var load = d3.scale.sqrt()
+       .range([1, 10])
+       .nice()
+       //.clamp(true)
+
+var color = d3.scale.category10()
+
+var xAxis = d3.svg.axis()
+    .scale(x)
+    .orient("bottom")
+    .tickSize(-chartHeight, 0)
+    .ticks(d3.time.minutes, 60)
+    .tickPadding(6);
+
+var yAxis = d3.svg.axis()
+    .scale(y)
+    .ticks(2)
+    .tickSize(-width)
+    .tickPadding(6)
+    .orient("left");
+
+var line = d3.svg.line()
+    .interpolate("cardinal")
+    .x(function(d) { return x(d.startTime); })
+    .y(function(d) { return load(d.load); });
+
+
+var area = d3.svg.area()
+    .interpolate("basis")
+    //.x(function(d) {  return x(d.time); })
+    .x0(function(d) {  return x(d.time)+(d.up ? 1 : -1)*(load(d.load)/4); })
+    .x1(function(d) {  return x(d.time)+(d.up ? -1 : 1)*(load(d.load)/4); })
+    //.x1(function(d) {  return x(d.time)+(d.up ? -1 : 1)*load(d.load)/2; })
+    .y0(function(d) { return y(d.pos)+load(d.load)/4; })
+    .y1(function(d) { return y(d.pos)-load(d.load)/4; })
+
+var svg = d3.select("body").append("svg")
+    .attr("width", width + margin.left + margin.right)
+    .attr("height", height + margin.top + margin.bottom)
+  .append("g")
+    .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+var makeDrives = function(d){
+  return "M"+ x(d.startTime) + " " + y(d.startPos) + " " +
+          "L" + x(d.endTime) + " " + y(d.endPos) + " Z";
+}
+
+var makeWaiting = function(d){
+  return "M"+ x(d[0].endTime) + " " + y(d[0].endPos) + " " +
+          "L" + x(d[1].startTime) + " " + y(d[1].startPos) + " Z";
+}
+
+var timeSlot = 15;
+
+var drives = svg.append("g")
+  .classed("container",true)
+  
+var brush = d3.svg.brush()
+      .x(x)
+       // .on("brushstart", brushstart)
+      // .on("brush", brushmove)
+      .on("brushend", function(d){
+        console.log(d,brush.extent())
+      });
+
+function loadChart(containter,data){
+
+  console.log(data)
+
+  var histo = d3.layout.histogram()
+    .value(function(d){ return d.startTime; })
+    .bins(x.ticks(d3.time.minutes, timeSlot))
+    (data.values);
+
+  histo.forEach(function(d) {
+      d.loadTotal = d3.sum(d, function(d){ return d.load; });
+      d.valuesUp = d.filter(function(d){ return d.up; });
+      d.valuesDown = d.filter(function(d){ return !d.up; });
+      d.up = d.valuesUp.length;
+      d.down = d.valuesDown.length;
+
+      d.loadUp = d3.sum(d.valuesUp, function(d){ return d.load; });
+      d.loadDown = d3.sum(d.valuesDown, function(d){ return d.load; });
+  })
+
+  var num = d3.scale.linear()
+    .domain(d3.extent(histo, function(d){ return d.y; }))
+    .range([0, chartHeight/2]);
+
+  var areaTotal = d3.svg.area()
+    .interpolate("basis")
+    .x(function(d){ return x(d.x) })
+    .y0(function(d){ return chartHeight/2-num(d.up) })
+    .y1(function(d){ return chartHeight/2+num(d.down) })
+
+  
+  var clip = containter.append("clipPath")
+      .attr("id", function(d){ return "clip"+data.key; })
+      .append("path").datum(histo).attr("d", areaTotal)
+
+
+  var ticks = x.ticks(d3.time.minutes, timeSlot);
+  var tickWidth = x(ticks[1]) - x(ticks[0]);
+
+  //console.log(histo);
+            
+  var loadUp = d3.scale.linear()
+    .domain(d3.extent(histo, function(d) { return d.loadUp; }))
+    .range(["rgb(253, 187, 132)","rgb(127, 0, 0)"])
+    //.interpolate(d3.interpolateHsl);
+
+
+  console.log("load",loadUp.domain());
+
+  var loadDown = d3.scale.linear()
+    .domain(d3.extent(histo, function(d) { return d.loadDown; }))
+    .range(["rgb(166, 189, 219)", "rgb(2, 56, 88)"])
+    .interpolate(d3.interpolateHcl);
+
+  //console.log("histo",histo);  
+
+  containter.append("g")
+    .attr("clip-path", function(d,i) { return "url(#clip"+data.key+")"; })
+    .selectAll("rect")
+    .data(histo)
+    .enter()
+      .append("rect")
+      .attr("height", chartHeight/2)
+      .attr("width", tickWidth)
+      .attr("y", chartHeight/2)
+      .attr("x", function(d){ return x(d.x)-tickWidth/2})
+      .attr("fill", function(d){ return loadDown(d.loadDown); })
+
+  containter.append("g")
+    .attr("clip-path", function(d,i) { return "url(#clip"+data.key+")"; })
+    .selectAll("rect")
+    .data(histo)
+    .enter()
+      .append("rect")
+      .attr("height", chartHeight/2)
+      .attr("width", tickWidth)
+      .attr("y", 0)
+      .attr("x", function(d){ return x(d.x)-tickWidth/2})
+      .attr("fill", function(d){ return loadUp(d.loadUp); })
+
+
+  var streamsvg = containter.append("g").style("opacity",0.5);
+
+   containter.append("g")
+        .attr("class", "x axis")
+        .attr("transform", "translate(0," + chartHeight + ")")
+        .call(xAxis)
+        .selectAll("text")
+         // .style("opacity", last ? 1 : 0)
+
+
+    containter.append("g")
+      .attr("class", "x brush")
+      .call(brush)
+      .selectAll("rect")
+            .attr("y", 0)
+            .attr("height", chartHeight);
+
+
+  }
+
+
+d3.csv("data/18nov.csv", function(error, loaded) {
+
+  data = loaded.filter(function(d){
+    return d.endTime!=0 && d.startTime!=0;
+  })
+
+  data = data.map(function(d) { 
+      return { 
+        name: d.name,
+        startTime: parseDate(d.startTime),
+        endTime: parseDate(d.endTime),
+        startPos: (+d.startPos),
+        endPos: (+d.endPos),
+        load: +d.load,
+        up: d.startPos-d.endPos < 0
+      }; 
+  });
+
+  data.sort(function(a,b){
+    return a.startTime - b.startTime;
+  });
+
+  var split = [];
+  data.forEach(function(d){
+    split.push({
+      name: d.name,
+      time: d.startTime,
+      pos: d.startPos,
+      load: d.load,
+      type: "start",
+      up: d.up
+    })
+    split.push({
+      name: d.name,
+      time: d.endTime,
+      pos: d.endPos,
+      load: d.load,
+      type: "end",
+      up: d.up
+    })
+  });
+
+  console.log("split",split)
+
+  x.domain(d3.extent(data, function(d){ return d.startTime; }));
+  
+  var elevators = d3.nest()
+      .key(function(d) { return d.name.split(".")[1]; })
+      .sortKeys(d3.ascending)
+      .entries(data)
+
+  console.log("elevators", elevators);
+
+  svg.append("text")
+    .text(x.domain())
+
+  svg.append("g")
+    .selectAll("g")
+    .data(elevators)
+    .enter()
+    .append("g")
+      .attr("transform", function(d,i){ return "translate(" + 0 + "," + i*(chartHeight+chartHeightBorder) + ")"; })
+      .each(function(d,i){
+
+        d3.select(this)
+          .append("text")
+          .style("text-anchor", "end")
+          .attr("dx", "-.8em")
+          .attr("dy", "-3em")
+          .attr("transform", function(d) {
+             return "rotate(-90)" 
+          })
+          .text(d.key);
+
+        loadChart(d3.select(this), d);
+      })
+
+  d3.select("svg").attr("height", (chartHeight+20)*elevators.length+margin.top+margin.bottom);
+
+  //loadChart(drives,[elevators[0]]);
+
+                                                                                   
+
+
+});
+
+
+</script>

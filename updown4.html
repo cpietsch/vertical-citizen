@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<style>
+ 
+svg {
+  font: 10px sans-serif;
+}
+.axis .domain {
+  stroke:none;
+}
+.axis path,
+.axis line {
+  shape-rendering: crispEdges;
+  stroke:#000;
+  fill:none;
+}
+
+.axis .tick {
+  stroke-width: .5px;
+  stroke-opacity: .1;
+}
+
+.bar {
+  fill:none;
+}
+.waiting {
+  opacity: 0.4;
+}
+.line {
+  fill: none;
+  stroke-width: 1px;
+  opacity: 0.6;
+}
+.bars {
+  opacity: 0.8;
+}
+rect.pane {
+  cursor: move;
+  fill: none;
+  pointer-events: all;
+}
+
+.drives {
+  fill: red;
+  stroke:none;
+}
+
+
+
+ 
+</style>
+<body>
+<script src="js/d3.v3.min.js"></script>
+<script>
+
+var data;
+
+var margin = {top: 20, right: 50, bottom: 30, left: 50},
+    height = 2500 - margin.top - margin.bottom
+    width = 1000 - margin.left - margin.right,
+    innerRadius = Math.min(width, height) * .41,
+    outerRadius = innerRadius * 1.1,
+    chartHeight = 100,
+    chartHeightBorder = 2;
+
+var parseDate = d3.time.format("%Y-%m-%d %H:%M:%S").parse;
+
+var x = d3.time.scale()
+    .range([0, width]);
+
+var y = d3.scale.linear()
+    .range([chartHeight, 0]);
+
+var size = d3.scale.linear()
+    .range([0, 1]);
+
+var load = d3.scale.sqrt()
+       .range([1, 10])
+       .nice()
+       //.clamp(true)
+
+var color = d3.scale.category10()
+
+var xAxis = d3.svg.axis()
+    .scale(x)
+    .orient("bottom")
+    .tickSize(-chartHeight, 0)
+    .ticks(d3.time.minutes, 60)
+    .tickPadding(6);
+
+var yAxis = d3.svg.axis()
+    .scale(y)
+    .ticks(2)
+    .tickSize(-width)
+    .tickPadding(6)
+    .orient("left");
+
+var line = d3.svg.line()
+    .interpolate("cardinal")
+    .x(function(d) { return x(d.startTime); })
+    .y(function(d) { return load(d.load); });
+
+
+var area = d3.svg.area()
+    .interpolate("basis")
+    //.x(function(d) {  return x(d.time); })
+    .x0(function(d) {  return x(d.time)+(d.up ? 1 : -1)*(load(d.load)/4); })
+    .x1(function(d) {  return x(d.time)+(d.up ? -1 : 1)*(load(d.load)/4); })
+    //.x1(function(d) {  return x(d.time)+(d.up ? -1 : 1)*load(d.load)/2; })
+    .y0(function(d) { return y(d.pos)+load(d.load)/4; })
+    .y1(function(d) { return y(d.pos)-load(d.load)/4; })
+
+var svg = d3.select("body").append("svg")
+    .attr("width", width + margin.left + margin.right)
+    .attr("height", height + margin.top + margin.bottom)
+  .append("g")
+    .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+var makeDrives = function(d){
+  return "M"+ x(d.startTime) + " " + y(d.startPos) + " " +
+          "L" + x(d.endTime) + " " + y(d.endPos) + " Z";
+}
+
+var makeWaiting = function(d){
+  return "M"+ x(d[0].endTime) + " " + y(d[0].endPos) + " " +
+          "L" + x(d[1].startTime) + " " + y(d[1].startPos) + " Z";
+}
+
+
+var drives = svg.append("g")
+  .attr("clip-path", "url(#clip)")
+  .classed("container",true)
+  
+
+function loadChart(containter,data,last){
+
+  var timeSlot = 15;
+
+  // var histo = d3.layout.histogram()
+  //           .value(function(d){ return d.pos; })
+  //           .bins(y.ticks(40))  
+  //           (data[0].values);
+
+  // var histoWidth = d3.scale.linear().domain(d3.extent(histo, function(d) { return d.y; } )).range([0,40]);
+
+  // containter.append("g").selectAll("g")
+  //   .data(histo)
+  //   .enter()
+  //     .append("g")
+  //     .attr("transform", function(d) { return "translate(" + 0 + "," + y(d.x) + ")"; })
+  //     .append("rect")
+  //     .attr("height", 1)
+  //     .attr("width", function(d){ return histoWidth(d.y); })
+
+
+
+
+
+  var histo1 = d3.layout.histogram()
+            .value(function(d){ return d.time; })
+            .bins(x.ticks(d3.time.minutes, timeSlot))
+            (data[0].values);
+
+  histo1.forEach(function(d) {
+      d.ups = d.filter(function(d){ return d.up; }).length;
+      d.downs = d.filter(function(d){ return !d.up; }).length;
+  })
+
+  var num = d3.scale.linear()
+    .domain(d3.extent(histo1, function(d){ return d.length; }))
+    .range([0, chartHeight/2]);
+
+  console.log(histo1, num.domain())
+
+  var areaUp = d3.svg.area()
+    .interpolate("basis")
+    .x(function(d){ return x(d.x) })
+    .y0(function(d){ return chartHeight/2; })
+    .y1(function(d){ return chartHeight/2-num(d.ups) })
+
+  var areaDown = d3.svg.area()
+    .interpolate("basis")
+    .x(function(d){ return x(d.x) })
+    .y0(function(d){ return chartHeight/2 })
+    .y1(function(d){ return chartHeight/2+num(d.downs) })
+
+
+  var areaTotal = d3.svg.area()
+    .interpolate("basis")
+    .x(function(d){ return x(d.x) })
+    .y0(function(d){ return chartHeight/2-num(d.ups) })
+    .y1(function(d){ return chartHeight/2+num(d.downs) })
+
+  
+
+  var rand = new Date()*1;
+  var clip = containter.append("clipPath")
+      .attr("id", function(d){ return "clip"+rand; })
+      .append("path").datum(histo1).attr("d", areaTotal)
+
+
+
+  var timeSlot = 15;
+
+  var ticks = x.ticks(d3.time.minutes, timeSlot);
+  var tickWidth = x(ticks[1]) - x(ticks[0]);
+
+  var histo = d3.layout.histogram()
+            .value(function(d){ return d.time; })
+            .bins(x.ticks(d3.time.minutes, timeSlot))
+            (data[0].values.filter(function(d){ return d.type=="start"; }));
+
+  //console.log(histo);
+            
+  var loads = d3.scale.linear()
+    .domain(
+        d3.extent(histo, function(d) {
+          return d.load = d3.sum(d, function(d){ return d.load; });
+        })
+    )
+    .range(["white", "black"])
+    .interpolate(d3.interpolateHcl);
+
+  console.log(loads.domain());
+  console.log(histo);  
+
+  containter.append("g")
+    .attr("clip-path", function(d,i) { return "url(#clip"+rand+")"; })
+    .selectAll("rect")
+    .data(histo)
+    .enter()
+      .append("rect")
+      .attr("height", chartHeight)
+      .attr("width", tickWidth)
+      .attr("y", 0)
+      .attr("x", function(d){ return x(d.x)})
+      .attr("fill", function(d){ return loads(d.load); })
+
+
+  var streamsvg = containter.append("g").style("opacity",0.5);
+
+  streamsvg.append("path").datum(histo1).attr("d", areaUp).attr("fill", "blue").attr("stroke","none")
+  streamsvg.append("path").datum(histo1).attr("d", areaDown).attr("fill", "red").attr("stroke","none")
+
+
+
+   containter.append("g")
+        .attr("class", "x axis")
+        .attr("transform", "translate(0," + chartHeight + ")")
+        .call(xAxis)
+        .selectAll("text")
+         // .style("opacity", last ? 1 : 0)
+
+
+    // containter.append("g")
+    //     .attr("class", "y axis")
+    //     .call(yAxis);
+
+   //  var s = containter.append("g")
+   //    .style("opacity",0.3)
+   //    .selectAll("g")
+   //    .data(data)
+
+   //  s.enter()
+   //    .append("g")
+   //    .append("path")
+   //    .datum(function(d){ return d.values; })
+   //    .attr("fill", function(d,i){ return color(i); })
+   //    .attr("d", area)
+
+   //  s.exit()
+   //    .remove()
+
+   //  s.select("path")
+   //    .datum(function(d){ console.log(d); return d.values; })
+   //    .attr("d", area)
+
+
+  }
+
+
+d3.csv("data/18nov.csv", function(error, loaded) {
+
+  data = loaded.filter(function(d){
+    return d.endTime!=0 && d.startTime!=0;
+  })
+
+  data = data.map( function (d) { 
+      // if(d.endTime==0 || d.startTime == 0){
+      //   console.log(d)
+      // }
+      return { 
+        name: d.name,
+        startTime: parseDate(d.startTime),
+        endTime: parseDate(d.endTime),
+        startPos: (+d.startPos),
+        endPos: (+d.endPos),
+        load: +d.load,
+        up: d.startPos-d.endPos < 0
+      }; 
+  });
+
+
+
+  data.sort(function(a,b){
+    return a.startTime - b.startTime;
+  });
+
+  var split = [];
+  data.forEach(function(d){
+    split.push({
+      name: d.name,
+      time: d.startTime,
+      pos: d.startPos,
+      load: d.load,
+      type: "start",
+      up: d.up
+    })
+    split.push({
+      name: d.name,
+      time: d.endTime,
+      pos: d.endPos,
+      load: d.load,
+      type: "end",
+      up: d.up
+    })
+  });
+
+  console.log("split",split)
+
+  y.domain(d3.extent(split, function(d){ return d.pos; }));
+  x.domain(d3.extent(split, function(d){ return d.time; }));
+  load.domain(d3.extent(split, function(d) { return d.load; }));
+  
+
+  var elevators = d3.nest()
+      .key(function(d) { return d.name.split(".")[1]; })
+      .sortKeys(d3.ascending)
+      .entries(split)
+
+  console.log("elevators", elevators);
+
+  svg.append("text")
+    .text(x.domain())
+
+  svg.append("g")
+    .selectAll("g")
+    .data(elevators)
+    .enter()
+    .append("g")
+      .attr("transform", function(d,i){ return "translate(" + 0 + "," + i*(chartHeight+chartHeightBorder) + ")"; })
+      .each(function(d,i){
+
+        d3.select(this)
+          .append("text")
+          .style("text-anchor", "end")
+          .attr("dx", "-.8em")
+          .attr("dy", "-3em")
+          .attr("transform", function(d) {
+             return "rotate(-90)" 
+          })
+          .text(d.key);
+
+        loadChart(d3.select(this), [d], i==elevators.length-1)
+      })
+
+  d3.select("svg").attr("height", (chartHeight+20)*elevators.length+margin.top+margin.bottom);
+
+  //loadChart(drives,[elevators[0]]);
+
+                                                                                   
+
+
+});
+
+
+</script>
