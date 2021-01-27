@@ -1,7 +1,7 @@
 # vertical-citizen
 Experimental visualizations of elevator traffic for "De Rotterdam" (Verticalcitizens project)
 
-Tweet: https://twitter.com/chrispiecom/status/695978847733415938/photo/1
+![visualizations all together](vertical.jfif?raw=true "visualizations all together")
 
 Status: Never finished project from 2015 
 
